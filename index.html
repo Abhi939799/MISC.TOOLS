@@ -11,6 +11,12 @@
 main{max-width:1100px;margin:0 auto;padding:28px 18px 48px}.head{display:flex;gap:14px;align-items:center;margin-bottom:8px}.logo{width:48px;height:48px;border-radius:13px;background:var(--soft);display:grid;place-items:center;font-size:25px}.head h1{font-size:clamp(24px,4vw,32px);line-height:1.2;margin:0}.sub{color:var(--muted);margin:8px 0 22px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;min-width:0}.panelhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}.panelhead h2{font-size:16px;margin:0}textarea,pre{width:100%;min-height:340px;margin:0;padding:13px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--text);font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;tab-size:2;white-space:pre;overflow:auto}textarea{resize:vertical;min-height:340px}pre{overflow:auto;white-space:pre;overflow-wrap:normal}
 button{border:1px solid var(--border);background:var(--panel);color:var(--text);padding:9px 13px;border-radius:9px;font-weight:600;cursor:pointer}button.primary{background:var(--accent);color:white;border-color:transparent}button:hover{filter:brightness(.96)}button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #83a4ff;outline-offset:2px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.options{display:flex;flex-wrap:wrap;gap:14px;margin-top:13px;color:var(--muted);font-size:13px}.options label{display:flex;align-items:center;gap:7px}.options input{accent-color:var(--accent)}.status{font-size:13px;min-height:22px;margin-top:9px;color:var(--muted)}.status.good{color:var(--good)}.status.bad{color:var(--bad)}.note{margin-top:18px;padding:13px 15px;border:1px solid var(--border);border-radius:10px;color:var(--muted);font-size:13px}.small{font-size:12px;color:var(--muted)}.rightactions{display:flex;gap:7px}
+.copy-toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,18px);display:flex;align-items:center;gap:11px;max-width:calc(100vw - 28px);padding:13px 18px;border-radius:14px;background:#087443;color:#fff;box-shadow:0 12px 35px #0003;opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease;z-index:1000;font-weight:650}
+.copy-toast.show{opacity:1;transform:translate(-50%,0)}
+.checkmark{width:27px;height:27px;flex:0 0 27px;border:2px solid #fff;border-radius:50%;display:grid;place-items:center}
+.checkmark svg{width:18px;height:18px;stroke:#fff;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:24;stroke-dashoffset:24;animation:drawcheck .35s .08s ease-out forwards}
+@keyframes drawcheck{to{stroke-dashoffset:0}}
+@media(prefers-reduced-motion:reduce){.copy-toast,.checkmark svg{transition:none;animation:none;stroke-dashoffset:0}}
 @media(max-width:760px){.grid{grid-template-columns:1fr}.panel textarea,.panel pre{min-height:250px}}
 </style>
 </head>
@@ -41,11 +47,26 @@ button{border:1px solid var(--border);background:var(--panel);color:var(--text);
   </div>
   <div class="note"><strong>Important:</strong> Formatting restores indentation between XML elements. If the website has deleted line breaks inside a text value, those original breaks cannot be recovered automatically unless the message contains recognizable markers or you provide message-specific rules. This tool rejects malformed XML rather than guessing and changing its meaning.</div>
 </main>
+<div class="copy-toast" id="copyToast" role="status" aria-live="polite">
+  <span class="checkmark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span>
+  <span id="copyToastText">Copied to clipboard! You're all set.</span>
+</div>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const input = $('input'), output = $('output');
   const setStatus = (id, text, kind='') => { const el=$(id); el.textContent=text; el.className='status '+kind; };
+  let toastTimer;
+  function showCopyToast(message) {
+    const toast = $('copyToast');
+    $('copyToastText').textContent = message;
+    toast.classList.remove('show');
+    const svg = toast.querySelector('svg');
+    if (svg) { svg.style.animation = 'none'; void svg.offsetWidth; svg.style.animation = ''; }
+    requestAnimationFrame(() => toast.classList.add('show'));
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
+  }
 
   function escapeText(s) {
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -131,6 +152,7 @@ button{border:1px solid var(--border);background:var(--panel);color:var(--text);
       try {
         await navigator.clipboard.writeText(result);
         setStatus('outputStatus', 'Formatted automatically and copied to clipboard.', 'good');
+        showCopyToast('XML formatted and copied! You’re all set.');
       } catch (e) {
         // Clipboard write may be blocked by browser permissions, especially for local files.
         setStatus('outputStatus', 'XML formatted. Browser blocked automatic clipboard copying; click Copy output.', 'bad');
@@ -151,11 +173,16 @@ button{border:1px solid var(--border);background:var(--panel);color:var(--text);
   $('copyBtn').addEventListener('click', async () => {
     const text=output.textContent;
     if (!text) { setStatus('outputStatus','There is no formatted output to copy.','bad'); return; }
-    try { await navigator.clipboard.writeText(text); setStatus('outputStatus','Formatted XML copied to clipboard.','good'); }
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus('outputStatus','Formatted XML copied to clipboard.','good');
+      showCopyToast('Copied to clipboard! You’re all set.');
+    }
     catch(e) {
       const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
       const ok=document.execCommand('copy'); ta.remove();
       setStatus('outputStatus',ok?'Formatted XML copied to clipboard.':'Clipboard access was blocked. Select the output and copy it manually.',ok?'good':'bad');
+      if (ok) showCopyToast('Copied to clipboard! You’re all set.');
     }
   });
   $('pasteBtn').addEventListener('click', async () => {
